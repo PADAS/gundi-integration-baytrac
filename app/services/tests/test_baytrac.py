@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime, timezone
 
-from app.actions.baytrac_client import BaytracDeviceStatus, BaytracRoutePoint, BaytracUnauthorizedException
+from app.actions.baytrac_client import BaytracDeviceStatus, BaytracRoutePoint
 from app.actions.configurations import PullObservationsConfiguration, PullHistoricalObservationsConfiguration
 from app.actions.handlers import (
     action_pull_observations,
@@ -140,7 +140,7 @@ async def test_action_pull_observations_sends_to_gundi(mocker, integration, pull
 
     result = await action_pull_observations(integration, pull_config)
 
-    assert result == {"observations_extracted": 1}
+    assert result["observations_extracted"] == 1
     mock_send.assert_called_once()
     assert mock_send.call_args.kwargs["observations"][0]["source"] == sample_device_status.imei
 
@@ -154,7 +154,7 @@ async def test_action_pull_observations_empty_list(mocker, integration, pull_con
 
     result = await action_pull_observations(integration, pull_config)
 
-    assert result == {"observations_extracted": 0}
+    assert result["observations_extracted"] == 0
     mock_send.assert_not_called()
 
 
@@ -167,7 +167,7 @@ async def test_action_pull_observations_filters_invalid_gps_by_default(mocker, i
 
     result = await action_pull_observations(integration, pull_config)
 
-    assert result == {"observations_extracted": 1}
+    assert result["observations_extracted"] == 1
     sent_obs = mock_send.call_args.kwargs["observations"]
     assert sent_obs[0]["source"] == sample_device_status.imei
 
@@ -182,7 +182,7 @@ async def test_action_pull_observations_includes_invalid_gps_when_disabled(mocke
 
     result = await action_pull_observations(integration, config)
 
-    assert result == {"observations_extracted": 1}
+    assert result["observations_extracted"] == 1
 
 
 # --- action_pull_historical_observations ---
@@ -197,7 +197,7 @@ async def test_action_pull_historical_observations_sends_to_gundi(mocker, integr
 
     result = await action_pull_historical_observations(integration, historical_config)
 
-    assert result == {"observations_extracted": 1}
+    assert result["observations_extracted"] == 1
     mock_send.assert_called_once()
     assert mock_send.call_args.kwargs["observations"][0]["source"] == sample_route_point.imei
 
@@ -212,7 +212,7 @@ async def test_action_pull_historical_observations_no_points(mocker, integration
 
     result = await action_pull_historical_observations(integration, historical_config)
 
-    assert result == {"observations_extracted": 0}
+    assert result["observations_extracted"] == 0
     mock_send.assert_not_called()
 
 
@@ -229,7 +229,7 @@ async def test_action_pull_historical_observations_single_imei(mocker, integrati
     result = await action_pull_historical_observations(integration, config)
 
     mock_get_positions.assert_not_called()
-    assert result == {"observations_extracted": 1}
+    assert result["observations_extracted"] == 1
 
 
 @pytest.mark.asyncio
@@ -243,7 +243,7 @@ async def test_action_pull_historical_observations_filters_invalid_gps_by_defaul
 
     result = await action_pull_historical_observations(integration, historical_config)
 
-    assert result == {"observations_extracted": 1}
+    assert result["observations_extracted"] == 1
     called_imeis = [c.kwargs["imei"] for c in mock_get_historical.call_args_list]
     assert sample_device_status.imei in called_imeis
     assert invalid_gps_device.imei not in called_imeis
@@ -261,7 +261,7 @@ async def test_action_pull_historical_observations_includes_invalid_gps_when_dis
 
     result = await action_pull_historical_observations(integration, config)
 
-    assert result == {"observations_extracted": 2}
+    assert result["observations_extracted"] == 2
     called_imeis = [c.kwargs["imei"] for c in mock_get_historical.call_args_list]
     assert sample_device_status.imei in called_imeis
     assert invalid_gps_device.imei in called_imeis

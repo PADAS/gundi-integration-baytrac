@@ -67,28 +67,30 @@ class BaytracClient:
     def __init__(self, endpoint: str, token: str):
         self._endpoint = endpoint
         self._token = token
+        self._session: httpx.AsyncClient = None
 
-    async def get_positions_list(self) -> list:
-        params = {
-            "api": "user",
-            "ver": 1.0,
-            "key": self._token,
-            "cmd": "USER_GET_OBJECTS",
-        }
-        async with httpx.AsyncClient(timeout=120) as session:
-            try:
-                response = await session.get(url=self._endpoint, params=params)
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                msg = f"Baytrac API returned HTTP error: {e}"
-                logger.exception(msg)
-                if e.response.status_code == 401:
-                    raise BaytracUnauthorizedException(e, message=msg)
-                raise
-            except httpx.HTTPError as e:
-                msg = f"Baytrac API request failed: {e}"
-                logger.exception(msg)
-                raise
+    async def __aenter__(self):
+        self._session = httpx.AsyncClient(timeout=120)
+        return self
+
+    async def __aexit__(self, *args):
+        await self._session.aclose()
+        self._session = None
+
+    async def _get(self, params: dict) -> httpx.Response:
+        try:
+            response = await self._session.get(url=self._endpoint, params=params)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            msg = f"Baytrac API returned HTTP error: {e}"
+            logger.exception(msg)
+            if e.response.status_code == 401:
+                raise BaytracUnauthorizedException(e, message=msg)
+            raise
+        except httpx.HTTPError as e:
+            msg = f"Baytrac API request failed: {e}"
+            logger.exception(msg)
+            raise
 
         if "ERROR" in response.text:
             error_code = self.BAYTRAC_ERROR_RESPONSES.get(response.text.strip(), 500)
@@ -100,6 +102,15 @@ class BaytracClient:
             logger.error(msg)
             raise httpx.HTTPError(msg)
 
+        return response
+
+    async def get_positions_list(self) -> list:
+        response = await self._get({
+            "api": "user",
+            "ver": 1.0,
+            "key": self._token,
+            "cmd": "USER_GET_OBJECTS",
+        })
         devices = []
         for item in response.json():
             try:
@@ -111,37 +122,12 @@ class BaytracClient:
     async def get_historical_positions(self, imei: str, start_dt: datetime, end_dt: datetime, stop_duration: int = 10) -> list:
         start_str = start_dt.strftime("%Y-%m-%d %H:%M:%S")
         end_str = end_dt.strftime("%Y-%m-%d %H:%M:%S")
-        params = {
+        response = await self._get({
             "api": "user",
             "ver": 1.0,
             "key": self._token,
             "cmd": f"OBJECT_GET_ROUTE,{imei},{start_str},{end_str},{stop_duration}",
-        }
-        async with httpx.AsyncClient(timeout=120) as session:
-            try:
-                response = await session.get(url=self._endpoint, params=params)
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                msg = f"Baytrac API returned HTTP error: {e}"
-                logger.exception(msg)
-                if e.response.status_code == 401:
-                    raise BaytracUnauthorizedException(e, message=msg)
-                raise
-            except httpx.HTTPError as e:
-                msg = f"Baytrac API request failed: {e}"
-                logger.exception(msg)
-                raise
-
-        if "ERROR" in response.text:
-            error_code = self.BAYTRAC_ERROR_RESPONSES.get(response.text.strip(), 500)
-            if error_code == 401:
-                raise BaytracUnauthorizedException(
-                    BaytracException(error_code), message=response.text.strip()
-                )
-            msg = f"Baytrac API returned error response: {response.text}"
-            logger.error(msg)
-            raise httpx.HTTPError(msg)
-
+        })
         points = []
         for entry in response.json().get("route", []):
             try:

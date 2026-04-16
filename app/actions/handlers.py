@@ -11,28 +11,35 @@ from .configurations import PullObservationsConfiguration, PullHistoricalObserva
 logger = logging.getLogger(__name__)
 
 
+def _filter_valid_gps(devices: list) -> tuple:
+    valid, invalid = [], []
+    for d in devices:
+        (valid if d.loc_valid == "1" else invalid).append(d)
+    for d in invalid:
+        logger.warning("Skipping device %s (%s) — loc_valid=%s", d.imei, d.name, d.loc_valid)
+    return valid, len(invalid)
+
+
 @activity_logger()
 @crontab_schedule("* * * * *")
 async def action_pull_observations(integration, action_config: PullObservationsConfiguration):
 
-    client = BaytracClient(
+    async with BaytracClient(
         endpoint=action_config.endpoint,
         token=action_config.token.get_secret_value(),
-    )
-    devices = await client.get_positions_list()
+    ) as client:
+        devices = await client.get_positions_list()
 
+    skipped = 0
     if action_config.filter_invalid_gps:
-        invalid = [d for d in devices if d.loc_valid != "1"]
-        for d in invalid:
-            logger.debug("Skipping device %s (%s) — loc_valid=%s", d.imei, d.name, d.loc_valid)
-        devices = [d for d in devices if d.loc_valid == "1"]
+        devices, skipped = _filter_valid_gps(devices)
 
     observations = [_transform(device) for device in devices]
 
     if observations:
         await send_observations_to_gundi(observations=observations, integration_id=integration.id)
 
-    return {"observations_extracted": len(observations)}
+    return {"observations_extracted": len(observations), "skipped_invalid_gps": skipped}
 
 
 @crontab_schedule("0 */6 * * *")
@@ -46,35 +53,34 @@ async def action_pull_historical_observations(integration, action_config: PullHi
     if not token:
         raise ValueError("token not found in pull_observations action config.")
 
-    client = BaytracClient(endpoint=endpoint, token=token)
-
     end_dt = datetime.now(tz=timezone.utc) - timedelta(hours=action_config.end_hours_ago)
     start_dt = end_dt - timedelta(hours=action_config.hours)
 
-    if action_config.imei:
-        imeis = [action_config.imei]
-    else:
-        devices = await client.get_positions_list()
-        if action_config.filter_invalid_gps:
-            invalid = [d for d in devices if d.loc_valid != "1"]
-            for d in invalid:
-                logger.debug("Skipping device %s (%s) — loc_valid=%s", d.imei, d.name, d.loc_valid)
-            devices = [d for d in devices if d.loc_valid == "1"]
-        imeis = [d.imei for d in devices]
-
     total_observations = 0
-    for imei in imeis:
-        points = await client.get_historical_positions(
-            imei=imei,
-            start_dt=start_dt,
-            end_dt=end_dt,
-        )
-        observations = [_transform_route_point(p) for p in points]
-        if observations:
-            await send_observations_to_gundi(observations=observations, integration_id=integration.id)
-            total_observations += len(observations)
+    skipped = 0
+    async with BaytracClient(endpoint=endpoint, token=token) as client:
+        if action_config.imei:
+            if action_config.filter_invalid_gps:
+                logger.warning("filter_invalid_gps is enabled but skipped — cannot check loc_valid for a specific IMEI without fetching all devices.")
+            imeis = [action_config.imei]
+        else:
+            devices = await client.get_positions_list()
+            if action_config.filter_invalid_gps:
+                devices, skipped = _filter_valid_gps(devices)
+            imeis = [d.imei for d in devices]
 
-    return {"observations_extracted": total_observations}
+        for imei in imeis:
+            points = await client.get_historical_positions(
+                imei=imei,
+                start_dt=start_dt,
+                end_dt=end_dt,
+            )
+            observations = [_transform_route_point(p) for p in points]
+            if observations:
+                await send_observations_to_gundi(observations=observations, integration_id=integration.id)
+                total_observations += len(observations)
+
+    return {"observations_extracted": total_observations, "skipped_invalid_gps": skipped}
 
 
 def _transform_route_point(point: BaytracRoutePoint) -> dict:
