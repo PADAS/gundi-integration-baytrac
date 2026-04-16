@@ -10,6 +10,8 @@ from .configurations import PullObservationsConfiguration, PullHistoricalObserva
 
 logger = logging.getLogger(__name__)
 
+HISTORICAL_BATCH_SIZE = 200
+
 
 def _filter_valid_gps(devices: list) -> tuple:
     valid, invalid = [], []
@@ -42,7 +44,7 @@ async def action_pull_observations(integration, action_config: PullObservationsC
     return {"observations_extracted": len(observations), "skipped_invalid_gps": skipped}
 
 
-@crontab_schedule("0 */6 * * *")
+@crontab_schedule("0 * * * *")
 @activity_logger()
 async def action_pull_historical_observations(integration, action_config: PullHistoricalObservationsConfiguration):
     pull_config = integration.get_action_config("pull_observations")
@@ -57,6 +59,7 @@ async def action_pull_historical_observations(integration, action_config: PullHi
     start_dt = end_dt - timedelta(hours=action_config.hours)
 
     total_observations = 0
+    batch = []
     async with BaytracClient(endpoint=endpoint, token=token) as client:
         if action_config.imei:
             imeis = [action_config.imei]
@@ -70,10 +73,15 @@ async def action_pull_historical_observations(integration, action_config: PullHi
                 start_dt=start_dt,
                 end_dt=end_dt,
             )
-            observations = [_transform_route_point(p) for p in points]
-            if observations:
-                await send_observations_to_gundi(observations=observations, integration_id=integration.id)
-                total_observations += len(observations)
+            batch.extend(_transform_route_point(p) for p in points)
+            if len(batch) >= HISTORICAL_BATCH_SIZE:
+                await send_observations_to_gundi(observations=batch, integration_id=integration.id)
+                total_observations += len(batch)
+                batch = []
+
+    if batch:
+        await send_observations_to_gundi(observations=batch, integration_id=integration.id)
+        total_observations += len(batch)
 
     return {"observations_extracted": total_observations}
 

@@ -75,7 +75,7 @@ def pull_config():
 
 @pytest.fixture
 def historical_config():
-    return PullHistoricalObservationsConfiguration(hours=6)
+    return PullHistoricalObservationsConfiguration(hours=1)
 
 
 # --- BaytracDeviceStatus ---
@@ -247,3 +247,40 @@ async def test_action_pull_historical_observations_fetches_all_devices_regardles
     called_imeis = [c.kwargs["imei"] for c in mock_get_historical.call_args_list]
     assert sample_device_status.imei in called_imeis
     assert invalid_gps_device.imei in called_imeis
+
+
+@pytest.mark.asyncio
+async def test_action_pull_historical_observations_flushes_mid_loop_when_batch_full(mocker, integration, historical_config, sample_route_point):
+    from app.actions.handlers import HISTORICAL_BATCH_SIZE
+
+    devices = [make_device(imei=str(i).zfill(15)) for i in range(3)]
+    points_per_device = HISTORICAL_BATCH_SIZE // 2 + 1  # 101 — two devices exceed threshold
+
+    def make_points(imei):
+        return [
+            BaytracRoutePoint(
+                imei=imei,
+                dt_tracker=sample_route_point.dt_tracker,
+                lat=sample_route_point.lat,
+                lng=sample_route_point.lng,
+                altitude=sample_route_point.altitude,
+                angle=sample_route_point.angle,
+                speed=sample_route_point.speed,
+            )
+            for _ in range(points_per_device)
+        ]
+
+    mocker.patch("app.services.activity_logger.publish_event", AsyncMock())
+    mocker.patch("app.actions.handlers.BaytracClient.get_positions_list", AsyncMock(return_value=devices))
+    mocker.patch("app.actions.handlers.BaytracClient.get_historical_positions", side_effect=lambda imei, **_: make_points(imei))
+    mock_send = AsyncMock(return_value={})
+    mocker.patch("app.actions.handlers.send_observations_to_gundi", mock_send)
+
+    result = await action_pull_historical_observations(integration, historical_config)
+
+    total = points_per_device * len(devices)
+    assert result["observations_extracted"] == total
+    # With 101 pts/device across 3 devices (303 total), expect at least one mid-loop flush
+    assert mock_send.call_count >= 2
+    sent_total = sum(len(c.kwargs["observations"]) for c in mock_send.call_args_list)
+    assert sent_total == total

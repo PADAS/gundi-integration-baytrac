@@ -21,7 +21,7 @@ class PullObservationsConfiguration(PullActionConfiguration):
 
 class PullHistoricalObservationsConfiguration(ExecutableActionMixin, PullActionConfiguration):
     hours: int = Field(
-        6,
+        1,
         description="Number of hours of historical data to fetch per device.",
         ge=1,
         le=48,
