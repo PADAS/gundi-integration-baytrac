@@ -35,7 +35,3 @@ class PullHistoricalObservationsConfiguration(ExecutableActionMixin, PullActionC
         None,
         description="If set, only fetch historical data for this specific device IMEI.",
     )
-    filter_invalid_gps: bool = Field(
-        True,
-        description="If enabled, devices with an invalid current GPS fix (loc_valid != 1) are skipped.",
-    )

@@ -233,7 +233,7 @@ async def test_action_pull_historical_observations_single_imei(mocker, integrati
 
 
 @pytest.mark.asyncio
-async def test_action_pull_historical_observations_filters_invalid_gps_by_default(mocker, integration, historical_config, sample_device_status, invalid_gps_device, sample_route_point):
+async def test_action_pull_historical_observations_fetches_all_devices_regardless_of_loc_valid(mocker, integration, historical_config, sample_device_status, invalid_gps_device, sample_route_point):
     mocker.patch("app.services.activity_logger.publish_event", AsyncMock())
     mocker.patch("app.actions.handlers.BaytracClient.get_positions_list", AsyncMock(return_value=[sample_device_status, invalid_gps_device]))
     mock_get_historical = AsyncMock(return_value=[sample_route_point])
@@ -242,24 +242,6 @@ async def test_action_pull_historical_observations_filters_invalid_gps_by_defaul
     mocker.patch("app.actions.handlers.send_observations_to_gundi", mock_send)
 
     result = await action_pull_historical_observations(integration, historical_config)
-
-    assert result["observations_extracted"] == 1
-    called_imeis = [c.kwargs["imei"] for c in mock_get_historical.call_args_list]
-    assert sample_device_status.imei in called_imeis
-    assert invalid_gps_device.imei not in called_imeis
-
-
-@pytest.mark.asyncio
-async def test_action_pull_historical_observations_includes_invalid_gps_when_disabled(mocker, integration, sample_device_status, invalid_gps_device, sample_route_point):
-    config = PullHistoricalObservationsConfiguration(hours=6, filter_invalid_gps=False)
-    mocker.patch("app.services.activity_logger.publish_event", AsyncMock())
-    mocker.patch("app.actions.handlers.BaytracClient.get_positions_list", AsyncMock(return_value=[sample_device_status, invalid_gps_device]))
-    mock_get_historical = AsyncMock(return_value=[sample_route_point])
-    mocker.patch("app.actions.handlers.BaytracClient.get_historical_positions", mock_get_historical)
-    mock_send = AsyncMock(return_value={})
-    mocker.patch("app.actions.handlers.send_observations_to_gundi", mock_send)
-
-    result = await action_pull_historical_observations(integration, config)
 
     assert result["observations_extracted"] == 2
     called_imeis = [c.kwargs["imei"] for c in mock_get_historical.call_args_list]

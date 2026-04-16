@@ -57,16 +57,11 @@ async def action_pull_historical_observations(integration, action_config: PullHi
     start_dt = end_dt - timedelta(hours=action_config.hours)
 
     total_observations = 0
-    skipped = 0
     async with BaytracClient(endpoint=endpoint, token=token) as client:
         if action_config.imei:
-            if action_config.filter_invalid_gps:
-                logger.warning("filter_invalid_gps is enabled but skipped — cannot check loc_valid for a specific IMEI without fetching all devices.")
             imeis = [action_config.imei]
         else:
             devices = await client.get_positions_list()
-            if action_config.filter_invalid_gps:
-                devices, skipped = _filter_valid_gps(devices)
             imeis = [d.imei for d in devices]
 
         for imei in imeis:
@@ -80,7 +75,7 @@ async def action_pull_historical_observations(integration, action_config: PullHi
                 await send_observations_to_gundi(observations=observations, integration_id=integration.id)
                 total_observations += len(observations)
 
-    return {"observations_extracted": total_observations, "skipped_invalid_gps": skipped}
+    return {"observations_extracted": total_observations}
 
 
 def _transform_route_point(point: BaytracRoutePoint) -> dict:
