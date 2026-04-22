@@ -11,12 +11,13 @@ from .configurations import PullObservationsConfiguration, PullHistoricalObserva
 logger = logging.getLogger(__name__)
 
 HISTORICAL_BATCH_SIZE = 200
+LOC_VALID = "1"
 
 
 def _filter_valid_gps(devices: list) -> tuple:
     valid, invalid = [], []
     for d in devices:
-        (valid if d.loc_valid == "1" else invalid).append(d)
+        (valid if d.loc_valid == LOC_VALID else invalid).append(d)
     for d in invalid:
         logger.warning("Skipping device %s (%s) — loc_valid=%s", d.imei, d.name, d.loc_valid)
     return valid, len(invalid)

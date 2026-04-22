@@ -2,6 +2,7 @@ import logging
 
 import httpx
 from datetime import datetime, timezone
+from dateutil import parser as dateutil_parser
 from pydantic import BaseModel, validator, ValidationError
 
 
@@ -54,7 +55,7 @@ class BaytracRoutePoint(BaseModel):
     @validator("dt_tracker", pre=True)
     def ensure_timezone(cls, v):
         if isinstance(v, str):
-            v = datetime.strptime(v, "%Y-%m-%d %H:%M:%S")
+            v = dateutil_parser.parse(v)
         if not v.tzinfo:
             return v.replace(tzinfo=timezone.utc)
         return v

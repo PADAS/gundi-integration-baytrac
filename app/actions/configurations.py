@@ -4,7 +4,7 @@ from pydantic import Field, HttpUrl, SecretStr
 from app.actions.core import PullActionConfiguration, ExecutableActionMixin
 
 
-class PullObservationsConfiguration(PullActionConfiguration):
+class PullObservationsConfiguration(ExecutableActionMixin, PullActionConfiguration):
     endpoint: HttpUrl = Field(
         "https://advantage.baytrac.co.za/api/api.php",
         description="Base URL of the Baytrac API.",
